@@ -6,7 +6,7 @@
 /*   By: adpachec <adpachec@student.42madrid.com>   +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/01/10 12:37:38 by adpachec          #+#    #+#             */
-/*   Updated: 2024/02/28 17:32:55 by adpachec         ###   ########.fr       */
+/*   Updated: 2024/03/04 13:35:13 by adpachec         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -28,7 +28,7 @@ class Server
 		std::vector<Socket*> _clientSockets;
 		ConnectionManager _connectionManager;
 		std::vector<struct pollfd> _pollFds;
-		std::map<int, HttpResponse> _responsesToSend;
+		HttpResponse _responseToSend;
 		short _errorCode;
 	
 	public:
@@ -39,27 +39,25 @@ class Server
 		Server& operator=(const Server& other);
 		
 		void 		run(std::vector<VirtualServers> servers);
-		void 		processRequest(HttpRequest request, VirtualServers server, Socket* socket);
+		void 		processRequest(HttpRequest request, VirtualServers server);
 		void 		processReturnDirective(const Location& locationRequest,
-					HttpResponse& processResponse);
+						HttpResponse& processResponse);
 		void 		processGet(std::string resourcePath, const Location* locationRequest,
-					Socket* socket, VirtualServers server);
+						VirtualServers server);
 		void		processGetCGI(std::string resourcePath, const Location* locationRequest,
-					Socket* socket, VirtualServers server, HttpRequest request);
-		void		processPost(HttpRequest request, VirtualServers server, Socket* socket,
-					const Location* locationRequest);
-		void 		processPostCGI(HttpRequest request, VirtualServers server, Socket* socket,
-					const Location* locationRequest);
-		void 		processDelete(std::string resourcePath, VirtualServers server, Socket* socket);
+						VirtualServers server, HttpRequest request);
+		void		processPost(HttpRequest request, VirtualServers server,
+						const Location* locationRequest);
+		void 		processPostCGI(HttpRequest request, VirtualServers server,
+						const Location* locationRequest);
+		void 		processDelete(std::string resourcePath, VirtualServers server);
 		bool 		postFileCGI(const std::string& httpBody, const std::string& filename, 
-					VirtualServers server, Socket* socket);
-		bool 		postFile(std::string resourcePath, HttpRequest request, VirtualServers server, 
-					Socket* socket);
+						VirtualServers server);
+		bool 		postFile(std::string resourcePath, HttpRequest request, VirtualServers server);
 		std::string checkGetPath(std::string resourcePath, const Location* locationRequest,
-					Socket* socket, VirtualServers server);
+						VirtualServers server);
 		Socket* 	handleNewConnection(int i);
-		void		createErrorPage(short errorCode, VirtualServers &server,
-					Socket* socket);
+		void		createErrorPage(short errorCode, VirtualServers &server);
 	
 		class ErrorException : public std::exception
 		{

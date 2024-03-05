@@ -1,0 +1,9 @@
+Prueba
+Esto es una prueba
+
+curl -X POST -H "Content-Type: text/html" --data-binary @POST.html http://localhost:9000/files/postExample.html
+curl -X DELETE http://localhost:9000/files/nadacopy.html
+
+siege -c200 -r100 http://127.0.0.1:9000/
+siege -c50 -t30S http://127.0.0.1:9000/
+siege -c10 -t30S http://127.0.0.1:9000/

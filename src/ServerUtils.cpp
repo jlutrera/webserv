@@ -14,45 +14,52 @@
 
 std::string getMimeType(const std::string& filePath)
 {
-	size_t dotPos = filePath.rfind('.');
-	static std::unordered_map<std::string, std::string> mimeTypes =
+	static std::map<std::string, std::string> mimeTypes;
+	static bool isInitialized = false;
+
+	if (!isInitialized)
 	{
-		{".html", "text/html"},
-		{".css",  "text/css"},
-		{".txt",  "text/plain"},
-		{".csv",  "text/csv"},
-		{".htm",  "text/html"},
+		// Inicializa el mapa solo una vez
+		mimeTypes[".html"] = "text/html";
+		mimeTypes[".css"]  = "text/css";
+		mimeTypes[".txt"]  = "text/plain";
+		mimeTypes[".csv"]  = "text/csv";
+		mimeTypes[".htm"]  = "text/html";
 		
-		{".jpg",  "image/jpeg"},
-		{".jpeg", "image/jpeg"},
-		{".png",  "image/png"},
-		{".gif",  "image/gif"},
-		{".svg",  "image/svg+xml"},
-		{".ico",  "image/x-icon"},
+		mimeTypes[".jpg"]  = "image/jpeg";
+		mimeTypes[".jpeg"] = "image/jpeg";
+		mimeTypes[".png"]  = "image/png";
+		mimeTypes[".gif"]  = "image/gif";
+		mimeTypes[".svg"]  = "image/svg+xml";
+		mimeTypes[".ico"]  = "image/x-icon";
 
-		{".pdf",  "application/pdf"},
-		{".zip",  "application/zip"},
-		{".tar",  "application/x-tar"},
-		{".gz",   "application/gzip"},
-		{".js",   "application/javascript"},
-		{".json", "application/json"},
-		{".xml",  "application/xml"},
-		{".doc",  "application/msword"},
+		mimeTypes[".pdf"]  = "application/pdf";
+		mimeTypes[".zip"]  = "application/zip";
+		mimeTypes[".tar"]  = "application/x-tar";
+		mimeTypes[".gz"]   = "application/gzip";
+		mimeTypes[".js"]   = "application/javascript";
+		mimeTypes[".json"] = "application/json";
+		mimeTypes[".xml"]  = "application/xml";
+		mimeTypes[".doc"]  = "application/msword";
 
-		{".mp3",  "audio/mpeg"},
-		{".mp4",  "video/mp4"},
-		{".avi",  "video/x-msvideo"},
-		{".mpeg", "video/mpeg"},
-		{".webm", "video/webm"},
-	};
+		mimeTypes[".mp3"]  = "audio/mpeg";
+		mimeTypes[".mp4"]  = "video/mp4";
+		mimeTypes[".avi"]  = "video/x-msvideo";
+		mimeTypes[".mpeg"] = "video/mpeg";
+		mimeTypes[".webm"] = "video/webm";
 
+		isInitialized = true;
+	}
+
+	size_t dotPos = filePath.rfind('.');
 	if (dotPos != std::string::npos)
 	{
 		std::string ext = filePath.substr(dotPos);
-		if (mimeTypes.count(ext))
-			return mimeTypes[ext];
+		std::map<std::string, std::string>::const_iterator it = mimeTypes.find(ext);
+		if (it != mimeTypes.end())
+			return it->second;
 	}
-	return "text/plain"; // Tipo MIME por defecto si no se reconoce la extensión
+	return "application/octet-stream"; // Tipo MIME por defecto si no se reconoce la extensión
 }
 
 bool isValidPath(const std::string& basePath, const std::string& path)

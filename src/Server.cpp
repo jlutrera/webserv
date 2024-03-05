@@ -6,7 +6,7 @@
 /*   By: adpachec <adpachec@student.42madrid.com>   +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/01/10 12:38:27 by adpachec          #+#    #+#             */
-/*   Updated: 2024/03/04 13:03:30 by adpachec         ###   ########.fr       */
+/*   Updated: 2024/03/05 10:26:46 by adpachec         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,7 +22,7 @@ Server::Server(const Server& other)
 	_clientSockets = other._clientSockets;
 	_connectionManager = other._connectionManager;
 	_pollFds = other._pollFds;
-	_responsesToSend = other._responsesToSend;
+	_responseToSend = other._responseToSend;
 }
 Server& Server::operator=(const Server& other)
 {
@@ -32,7 +32,7 @@ Server& Server::operator=(const Server& other)
 		_clientSockets = other._clientSockets;
 		_connectionManager = other._connectionManager;
 		_pollFds = other._pollFds;
-		_responsesToSend = other._responsesToSend;
+		_responseToSend = other._responseToSend;
 	}
 	return *this;
 }
@@ -94,7 +94,7 @@ void Server::run(std::vector<VirtualServers> servers)
 		if (ret < 0)
 		{
 			std::cerr << "    Poll error !" << std::endl;
-			createErrorPage(500, servers[0], _serverSockets[0]);
+			createErrorPage(500, servers[0]);
 			break;
 		}
 
@@ -111,26 +111,25 @@ void Server::run(std::vector<VirtualServers> servers)
 				if (dataSocket && dataSocket->getSocketFd() != -1 &&
 					currentFd == dataSocket->getSocketFd())
 				{
-					requestReceive = _connectionManager.readData(*dataSocket, i, _pollFds, _clientSockets, _responsesToSend);
+					requestReceive = _connectionManager.readData(*dataSocket, i, _pollFds, _clientSockets);
 					if (requestReceive.getIsValidRequest() && requestReceive.getIsCompleteRequest())
 					{
 						bestServer = getBestServer(requestReceive, i, servers, _clientSockets, _pollFds);
 						// std::cout << "Server: " << bestServer.getServerName() << std::endl;
-						processRequest(requestReceive, bestServer, dataSocket);
-						_connectionManager.writeData(*dataSocket, _responsesToSend[currentFd]);
+						processRequest(requestReceive, bestServer);
+						_connectionManager.writeData(*dataSocket, _responseToSend);
 						if (!requestReceive.getIsKeepAlive() && dataSocket)
-							_connectionManager.removeConnection(*dataSocket, i, _pollFds, _clientSockets, _responsesToSend);
-					
-						std::map<int, HttpResponse>::iterator it = _responsesToSend.find(currentFd);
-						if (it != _responsesToSend.end())
-							_responsesToSend.erase(currentFd);
+							_connectionManager.removeConnection(*dataSocket, i, _pollFds, _clientSockets);
 					}
 					else if (!requestReceive.getIsValidRequest() && requestReceive.getIsCompleteRequest())
 					{
 						if (_pollFds.size() > i - 1)
 							--i;
-						createErrorPage(400, bestServer, dataSocket);
+						delete dataSocket;
+						createErrorPage(400, bestServer);
 					}
+					else
+						delete dataSocket;
 					
 					break ;
 				}
@@ -144,7 +143,7 @@ void Server::run(std::vector<VirtualServers> servers)
 					if (_clientSockets[j]->getSocketFd() == currentFd)
 					{
 						std::cout << "Client socket deleted: " << _clientSockets[j]->getSocketFd() << std::endl;
-						_connectionManager.removeConnection(*(_clientSockets[j]), i, _pollFds, _clientSockets, _responsesToSend);
+						_connectionManager.removeConnection(*(_clientSockets[j]), i, _pollFds, _clientSockets);
 						--i;
 						break ;
 					}
@@ -154,10 +153,8 @@ void Server::run(std::vector<VirtualServers> servers)
 	}
 }
 
-void Server::processRequest(HttpRequest request, VirtualServers server, Socket* socket)
+void Server::processRequest(HttpRequest request, VirtualServers server)
 {
-	HttpResponse processResponse;
-
 	// Configurar la respuesta
 	// std::cout << "\nProcessing REQUEST... " << std::endl;
 	// std::cout << "    Method: " << request.getMethod() << std::endl;
@@ -165,7 +162,7 @@ void Server::processRequest(HttpRequest request, VirtualServers server, Socket* 
 	if (server.getPort() == 0)
 	{
 		std::cout << "    Server not found" << std::endl;
-		createErrorPage(_errorCode, server, socket);
+		createErrorPage(_errorCode, server);
 		return ;
 	}
 
@@ -177,14 +174,13 @@ void Server::processRequest(HttpRequest request, VirtualServers server, Socket* 
 	if (locationRequest == NULL)
 	{
 		std::cout << "    Location not found" << std::endl;
-		createErrorPage(404, server, socket);
+		createErrorPage(404, server);
 		return ;
 	}
 	// std::cout << "    Location found: " << locationRequest->getPath() << std::endl;
 	if (locationRequest->getReturn()[0] != "")
 	{
-		processReturnDirective(*locationRequest, processResponse);
-		_responsesToSend[socket->getSocketFd()] = processResponse;
+		processReturnDirective(*locationRequest, _responseToSend);
 		return ;
 	}
 	
@@ -194,13 +190,13 @@ void Server::processRequest(HttpRequest request, VirtualServers server, Socket* 
 	{
 		if (!locationRequest->getMethods()[GET_METHOD])
 		{
-			createErrorPage(405, server, socket);
+			createErrorPage(405, server);
 			return ;
 		}
 		if (isCGIScript(resourcePath))
-			processGetCGI(resourcePath, locationRequest, socket, server, request);
+			processGetCGI(resourcePath, locationRequest, server, request);
 		else
-			processGet(resourcePath, locationRequest, socket, server);
+			processGet(resourcePath, locationRequest, server);
 	}
 
 	//****************************POST Method****************************
@@ -209,19 +205,19 @@ void Server::processRequest(HttpRequest request, VirtualServers server, Socket* 
 		// Verificar si el método POST está permitido
 		if (!locationRequest->getMethods()[POST_METHOD])
 		{
-			createErrorPage(405, server, socket);
+			createErrorPage(405, server);
 			return ;
 		}
 		if (request.getBody().size() > (locationRequest->getMaxBodySize() > 0 ?
 			locationRequest->getMaxBodySize() : server.getClientMaxBodySize()))
 		{
-			createErrorPage(413, server, socket);
+			createErrorPage(413, server);
 			return ;
 		}
 		if (isCGIScript(resourcePath))
-			processPostCGI(request, server, socket, locationRequest);
+			processPostCGI(request, server, locationRequest);
 		else
-			processPost(request, server, socket, locationRequest);
+			processPost(request, server, locationRequest);
 	}
 	//****************************DELETE Method****************************
 	else if (request.getMethod() == "DELETE")
@@ -229,24 +225,23 @@ void Server::processRequest(HttpRequest request, VirtualServers server, Socket* 
 		// Verificar si el método DELETE está permitido
 		if (!locationRequest->getMethods()[DELETE_METHOD])
 		{
-			createErrorPage(405, server, socket);
+			createErrorPage(405, server);
 			return ;
 		}
-		processDelete(resourcePath, server, socket);
+		processDelete(resourcePath, server);
 	}
 	//****************************Unknown Method****************************
 	else
 	{
 		// Método no soportado
-		createErrorPage(405, server, socket);
+		createErrorPage(405, server);
 		return ;
 	}
 }
 
 void Server::processGetCGI(std::string resourcePath, const Location* locationRequest,
-	Socket* socket, VirtualServers server, HttpRequest request)
+	VirtualServers server, HttpRequest request)
 {
-	HttpResponse processResponse;
 	CgiHandler cgi(request, *locationRequest, server);
 
 	std::string extension = resourcePath.substr(resourcePath.find_last_of("."));
@@ -255,31 +250,34 @@ void Server::processGetCGI(std::string resourcePath, const Location* locationReq
 	
 	if (pathCGI.empty())
 	{
-		std::cout << "pathCgi: " << pathCGI << std::endl;
-		std::cout << "    Path does not exist ! " << std::endl;
-		createErrorPage(404, server, socket);
+		createErrorPage(404, server);
+		return ;
+	}
+
+	if (!ConfigFile::fileExistsAndReadable(resourcePath))
+	{
+		createErrorPage(404, server);
 		return ;
 	}
 
 	std::string buffer = cgi.executeCgi(resourcePath, pathCGI);
 	if (buffer == "Status: 500\r\n\r\n")
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 	else
 	{
-		processResponse.setStatusCode(200);
-		processResponse.setHeader("Content-Type", "text/html");
-		processResponse.setBody(buffer);
-		_responsesToSend[socket->getSocketFd()] = processResponse;
+		_responseToSend.setStatusCode(200);
+		_responseToSend.setHeader("Content-Type", "text/html");
+		_responseToSend.setBody(buffer);
 	}
 }
 
 void Server::processGet(std::string resourcePath, const Location* locationRequest,
-	Socket* socket, VirtualServers server)
+	VirtualServers server)
 {
 
 	HttpResponse processResponse;
 
-	resourcePath = checkGetPath(resourcePath, locationRequest, socket, server);
+	resourcePath = checkGetPath(resourcePath, locationRequest, server);
 	
 	if (resourcePath.empty())
 		return ;
@@ -290,21 +288,18 @@ void Server::processGet(std::string resourcePath, const Location* locationReques
 	if (buffer.empty())
 	{
 		//Error si el archivo está vacío o no se pudo abrir
-		createErrorPage(204, server, socket);
+		createErrorPage(204, server);
 		return;
 	}
 	// Si se leyó con éxito, construir la respuesta
-	processResponse.setStatusCode(200);
-	processResponse.setHeader("Content-Type", getMimeType(resourcePath));
-	processResponse.setBody(buffer);
-	_responsesToSend[socket->getSocketFd()] = processResponse;
+	_responseToSend.setStatusCode(200);
+	_responseToSend.setHeader("Content-Type", getMimeType(resourcePath));
+	_responseToSend.setBody(buffer);
 }
 
-void Server::processPostCGI(HttpRequest request, VirtualServers server, Socket* socket,
+void Server::processPostCGI(HttpRequest request, VirtualServers server,
 	const Location* locationRequest)
 {
-	HttpResponse processResponse;
-	
 	std::string contentLengthHeader = request.getHeader("Content-Length");
 	unsigned long contentLength;
 	if (contentLengthHeader.empty())
@@ -313,7 +308,7 @@ void Server::processPostCGI(HttpRequest request, VirtualServers server, Socket* 
 		contentLength = std::strtoul(contentLengthHeader.c_str(), NULL, 10);
 	if (contentLength > server.getClientMaxBodySize())
 	{
-		createErrorPage(413, server, socket);
+		createErrorPage(413, server);
 		return;
 	}
 
@@ -332,42 +327,39 @@ void Server::processPostCGI(HttpRequest request, VirtualServers server, Socket* 
 	}
 	std::string fullResourcePath = root + getFilenameCGI(request);
 
-	if (!postFileCGI(request.getBody(), fullResourcePath, server, socket))
+	if (!postFileCGI(request.getBody(), fullResourcePath, server))
 		return ;
 
 	// Guardar el cuerpo de la solicitud en el archivo especificado por la ruta	
-	processResponse.setStatusCode(200);
+	_responseToSend.setStatusCode(200);
 	size_t contentTypeIni = request.getBody().find("Content-Type:");
 	if (contentTypeIni == std::string::npos)
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return;
 	}
 	size_t contentTypeEnd = request.getBody().find("\n", contentTypeIni);
 	if (contentTypeEnd == std::string::npos)
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return;
 	}
 	std::string contentType = request.getBody().substr(contentTypeIni + 14,
 			contentTypeEnd - contentTypeIni -14);
 
-	processResponse.setHeader("Content-Type", contentType);
-	processResponse.setBody("Content uploaded successfully.");
-	_responsesToSend[socket->getSocketFd()] = processResponse;
+	_responseToSend.setHeader("Content-Type", contentType);
+	_responseToSend.setBody("Content uploaded successfully.");
 }
 
-void Server::processPost(HttpRequest request, VirtualServers server, Socket* socket,
+void Server::processPost(HttpRequest request, VirtualServers server,
 	const Location* locationRequest)
 {
-	HttpResponse processResponse;
-	
 	// Verificar si el tipo de contenido es soportado (ejemplo: no se soporta multipart/form-data o chunked)
 	std::string contentTypeHeader = request.getHeader("Content-Type");
 	if (contentTypeHeader.find("multipart/form-data") != std::string::npos ||
 		contentTypeHeader.find("chunked") != std::string::npos)
 	{
-		createErrorPage(501, server, socket);
+		createErrorPage(501, server);
 		return ;
 	}
 
@@ -378,24 +370,23 @@ void Server::processPost(HttpRequest request, VirtualServers server, Socket* soc
 	if (resourcePath.empty() || !isValidPath(locationRequest->getRootLocation().empty() ? server.getRoot()
 		: locationRequest->getRootLocation(), resourcePath))
 	{
-		createErrorPage(400, server, socket);
+		createErrorPage(400, server);
 		return ;
 	}
 	// Guardar el cuerpo de la solicitud en el archivo especificado por la ruta
 	// Error si no se puede abrir el archivo
 	std::string	fullResourcePath = getFilename(request, resourcePath);
-	if (!postFile(fullResourcePath, request, server, socket))
+	if (!postFile(fullResourcePath, request, server))
 		return ;
 
 	// Guardar el cuerpo de la solicitud en el archivo especificado por la ruta	
-	processResponse.setStatusCode(200);
-	processResponse.setHeader("Content-Type", "text/plain");
-	processResponse.setBody("Content uploaded successfully.");
-	_responsesToSend[socket->getSocketFd()] = processResponse;
+	_responseToSend.setStatusCode(200);
+	_responseToSend.setHeader("Content-Type", "text/plain");
+	_responseToSend.setBody("Content uploaded successfully.");
 }
 
 bool Server::postFileCGI(const std::string& httpBody, const std::string& filename, 
-		VirtualServers server, Socket* socket)
+		VirtualServers server)
 {
     // Find the position of "Content-Type: text/plain" in the HTTP body
     size_t contentStartPos = httpBody.find("Content-Type:");
@@ -403,7 +394,7 @@ bool Server::postFileCGI(const std::string& httpBody, const std::string& filenam
     // If "Content-Type:" is found
 	if (contentStartPos == std::string::npos)
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return false;
 	}
     // Find the position of the newline character after "Content-Type: text/plain"
@@ -412,7 +403,7 @@ bool Server::postFileCGI(const std::string& httpBody, const std::string& filenam
     // If the newline character is found
 	if (newlinePos == std::string::npos)
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return false;
 	}
     // Extract the file content starting from the newline character
@@ -427,7 +418,7 @@ bool Server::postFileCGI(const std::string& httpBody, const std::string& filenam
     std::ofstream outputFile(filename.c_str());
 	if (!outputFile.is_open())
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return false;
 	}
     outputFile << fileContent;
@@ -435,51 +426,45 @@ bool Server::postFileCGI(const std::string& httpBody, const std::string& filenam
 	return true;
 }
 
-void Server::processDelete(std::string resourcePath, VirtualServers server, Socket* socket)
-{
-	HttpResponse processResponse;
-	
+void Server::processDelete(std::string resourcePath, VirtualServers server)
+{	
 	if (!ConfigFile::fileExistsAndReadable(resourcePath))
 	{
-		createErrorPage(404, server, socket);
+		createErrorPage(404, server);
 		return ;
 	}
 	// Eliminar el recurso
 	if (remove(resourcePath.c_str()) != 0)
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return ;
 	}
 	// Construir la respuesta
-	processResponse.setStatusCode(204);
-	processResponse.setBody("Delete successful");
-	_responsesToSend[socket->getSocketFd()] = processResponse;
+	_responseToSend.setStatusCode(204);
+	_responseToSend.setBody("Delete successful");
 }
 
-void Server::createErrorPage(short errorCode, VirtualServers &server, Socket* socket)
+void Server::createErrorPage(short errorCode, VirtualServers &server)
 {
-	HttpResponse response;
-	
-	response.setStatusCode(errorCode);
+	_responseToSend.setStatusCode(errorCode);
 	
 	std::string errorPage1 = server.getRoot();
 	std::string errorPage2 = server.getErrorPage(errorCode);
 
 	if (errorPage2 == "")
-		response.setBody(createBodyErrorPage(errorCode));
+		_responseToSend.setBody(createBodyErrorPage(errorCode));
 	else if (errorPage2[0] != '/')
 		errorPage2 = "/" + errorPage2;
 	errorPage2 = errorPage1 + errorPage2;
 	if (ConfigFile::fileExistsAndReadable(errorPage2))
 	{
 		std::string bodyFromFile = ConfigFile::readFile(errorPage2);
-		response.setBody(bodyFromFile);
+		_responseToSend.setBody(bodyFromFile);
 	}
 	else
-		response.setBody(createBodyErrorPage(errorCode));
-	if (response.getBody().empty())
-		response.setBody("Error Page Undefined");
-	_responsesToSend[socket->getSocketFd()] = response;
+		_responseToSend.setBody(createBodyErrorPage(errorCode));
+	if (_responseToSend.getBody().empty())
+		_responseToSend.setBody("Error Page Undefined");
 }
 
 void Server::processReturnDirective(const Location& locationRequest,
@@ -557,8 +542,7 @@ Socket* Server::handleNewConnection(int i)
 	return _serverSockets[0];
 }
 
-bool Server::postFile(std::string resourcePath, HttpRequest request, VirtualServers server, 
-	Socket* socket)
+bool Server::postFile(std::string resourcePath, HttpRequest request, VirtualServers server)
 {
 	HttpResponse processResponse;
 	if (resourcePath[0] == '.')
@@ -566,7 +550,7 @@ bool Server::postFile(std::string resourcePath, HttpRequest request, VirtualServ
 	std::ofstream outputFile(resourcePath.c_str(), std::ios::out | std::ios::binary);
 	if (!outputFile.is_open())
 	{
-		createErrorPage(500, server, socket);
+		createErrorPage(500, server);
 		return false;
 	}
 	outputFile.write(request.getBody().c_str(), request.getBody().size());
@@ -575,22 +559,20 @@ bool Server::postFile(std::string resourcePath, HttpRequest request, VirtualServ
 }
 
 std::string Server::checkGetPath(std::string resourcePath, const Location* locationRequest,
-		Socket* socket, VirtualServers server)
+		VirtualServers server)
 {
-	HttpResponse processResponse;
 	if (ConfigFile::checkPath(resourcePath) == IS_DIR)
 	{
 		if (locationRequest->getAutoindex())
 		{
 			// Autoindex activado: generar y enviar página de índice
-			std::string directoryIndexHTML = generateDirectoryIndex(resourcePath);
-			processResponse.setStatusCode(200);
-			processResponse.setHeader("Content-Type:", "text/html");
-			if (directoryIndexHTML.empty())
-				processResponse.setBody(directoryIndexHTML);
+			std::string directoryIndexHTML = generateDirectoryIndex(resourcePath);		
+			_responseToSend.setStatusCode(200);
+			_responseToSend.setHeader("Content-Type:", "text/html");
+			if (!directoryIndexHTML.empty())
+				_responseToSend.setBody(directoryIndexHTML);
 			else
-				processResponse.setBody("Empty directory");
-			_responsesToSend[socket->getSocketFd()] = processResponse;
+				_responseToSend.setBody("Empty directory");
 			return "";
 		}
 		else
@@ -601,19 +583,18 @@ std::string Server::checkGetPath(std::string resourcePath, const Location* locat
 			{
 				std::string buffer = ConfigFile::readFile(indexPath);
 				
-				processResponse.setStatusCode(200);
-				processResponse.setHeader("Content-Type:", getMimeType(indexPath));
+				_responseToSend.setStatusCode(200);
+				_responseToSend.setHeader("Content-Type:", getMimeType(indexPath));
 				if (buffer.empty())
-					processResponse.setBody("Empty file");
+					_responseToSend.setBody("Empty file");
 				else
-					processResponse.setBody(buffer);
-				_responsesToSend[socket->getSocketFd()] = processResponse;
+					_responseToSend.setBody(buffer);
 				return "";
 			}
 			else
 			{
 				// Directorio sin archivo index y autoindex desactivado
-				createErrorPage(403, server, socket);
+				createErrorPage(403, server);
 				return "";
 			}
 		}
@@ -621,7 +602,7 @@ std::string Server::checkGetPath(std::string resourcePath, const Location* locat
 	else if (!ConfigFile::fileExistsAndReadable(resourcePath))
 	{
 		// Si no existe, intenta enviar página de error personalizada o respuesta 404 genérica
-		createErrorPage(404, server, socket);
+		createErrorPage(404, server);
 		return "";
 	}
 

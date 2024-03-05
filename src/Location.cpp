@@ -356,31 +356,7 @@ int Location::checkLocation(Location &location, std::string serverRoot, std::str
 
 	serverIndex = " ";
 	std::string root =  location.getRootLocation();
-	/* ESTO ES MIO****************************************
-	if (path != "/cgi-bin")
-	{
-		if (!location.getReturn()[1].empty())
-		{
-			std::cout << "         original path = " << location.getPath() << std::endl;
-			std::cout << "         return  path  = " << location.getReturn()[1];
-			std::cout << " with code " << location.getReturn()[0] << std::endl;
-			if (ConfigFile::checkPath(root + location.getReturn()[1]) != IS_DIR)
-				return (3);
-		}
-		else if (location.getAutoindex())
-			std::cout << "          autoindex is on" << std::endl;
-		else
-		{
-			if (location.getIndexLocation().empty())
-				location.setIndexLocation(serverIndex + ";");
-			std::cout << "         root  = " << root << std::endl;
-			std::cout << "         path = " << path << std::endl;
-			std::cout << "         index = " << location.getIndexLocation() << std::endl;
-			if (!ConfigFile::fileExistsAndReadable(root + path + location.getIndexLocation()))
-				return (2);
-		}
-	}
-	*/
+	
 	if (path != "/cgi-bin")
 	{
 		if (!location.getReturn()[1].empty())

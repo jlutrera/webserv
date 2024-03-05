@@ -6,7 +6,7 @@
 /*   By: adpachec <adpachec@student.42madrid.com>   +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/01/10 12:42:54 by adpachec          #+#    #+#             */
-/*   Updated: 2024/03/01 11:31:14 by adpachec         ###   ########.fr       */
+/*   Updated: 2024/03/04 13:25:45 by adpachec         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -44,7 +44,7 @@ void ConnectionManager::addConnection(Socket& socket)
 }
 
 void ConnectionManager::removeConnection(Socket& socket, int i,
-			std::vector<struct pollfd>& _pollFds, std::vector<Socket *>& _clientSockets, std::map<int, HttpResponse>& _responsesToSend)
+			std::vector<struct pollfd>& _pollFds, std::vector<Socket *>& _clientSockets)
 {
 	int socketFd = socket.getSocketFd();
 
@@ -65,17 +65,13 @@ void ConnectionManager::removeConnection(Socket& socket, int i,
 	}
 	else
 		std::cout << "Connection not found. Socket FD = " << socketFd << std::endl;
-	
-	std::map<int, HttpResponse>::iterator it2 = _responsesToSend.find(socketFd);
-	if (it2 != _responsesToSend.end())
-		_responsesToSend.erase(socketFd);
 
 	if (socketFd != -1)
 		socket.close();
 }
 
 HttpRequest ConnectionManager::readData(Socket& socket, int i,
-			std::vector<struct pollfd> &_pollFds, std::vector<Socket *> &_clientSockets, std::map<int, HttpResponse>& _responsesToSend)
+			std::vector<struct pollfd> &_pollFds, std::vector<Socket *> &_clientSockets)
 {
 	ConnectionData* data(&connections[socket.getSocketFd()]);
 
@@ -132,7 +128,7 @@ HttpRequest ConnectionManager::readData(Socket& socket, int i,
 	}
 	else
 	{
-		this->removeConnection(socket, i, _pollFds, _clientSockets, _responsesToSend);
+		this->removeConnection(socket, i, _pollFds, _clientSockets);
 		HttpRequest invalidRequest;
 		invalidRequest.setValidRequest(false);
 		return invalidRequest;
