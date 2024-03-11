@@ -22,7 +22,7 @@ std::string buildDefault()
         "# Default Server Configuration File\n"
         "server {\n"
         "listen 127.0.0.1:9000;\n"
-        "root docs/www;\n"
+        "root var/www;\n"
 		"location / {\n"
 		"autoindex off;\n"
 		"}\n"
